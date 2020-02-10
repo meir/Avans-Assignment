@@ -1,5 +1,5 @@
 .idea
 .settings
 .project
-
+target/
 .env

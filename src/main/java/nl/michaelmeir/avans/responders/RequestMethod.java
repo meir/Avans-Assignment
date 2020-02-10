@@ -10,3 +10,16 @@ import java.lang.annotation.Target;
 public @interface RequestMethod {
     String value();
 }
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@interface Value {
+    public String name();
+    public Class type();
+}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@interface Required {
+    public Value[] value();
+}

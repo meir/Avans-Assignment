@@ -31,8 +31,8 @@ public class Webserver {
 
     public void run() {
         System.out.println("Starting webserver on http://localhost:" + String.valueOf(PORT));
-        server.createContext("/api/", new API(env));
         server.createContext("/", new Pages(env));
+        server.createContext("/api/", new API(env));
         server.start();
     }
 
