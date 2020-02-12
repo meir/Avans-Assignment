@@ -1,10 +1,8 @@
 package nl.michaelmeir.avans.responders;
 
-import com.mysql.cj.xdevapi.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
-import org.apache.commons.io.IOUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -14,19 +12,18 @@ import java.io.*;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Scanner;
-import java.util.stream.Collectors;
 
+//Responder is an abstract HttpHandler class that will handle the requests and return the response given by the corresponding method
 public abstract class Responder implements HttpHandler {
 
-    protected String root;
-    protected String prefix;
-    protected Dotenv env;
-    protected HashMap<String, String> defaultHeaders;
-    protected static String NOT_FOUND = "404 Not found!";
+    protected String root; //root is the location of the web files
+    protected String prefix; //prefix is the prefix of the url for example: / or /api/
+    protected Dotenv env; //env is the .env file containing important data
+    protected HashMap<String, String> defaultHeaders; //defaultHeaders containers all default headers that need to be added to any response
+    protected static String NOT_FOUND = "404 Not found!"; //NOT_FOUND is an constant for 404 responses
 
+    //Responder requires root, prefix, env and defaultHeaders to store for later use
     public Responder(String root, String prefix, Dotenv env, HashMap<String, String> defaultHeaders) {
         this.root = root;
         this.prefix = prefix;
@@ -34,6 +31,20 @@ public abstract class Responder implements HttpHandler {
         this.defaultHeaders = defaultHeaders;
     }
 
+    //handle handles all incoming http requests.
+    //using reflect it will find a method corresponding to the request and call it for a response.
+    //the response will be turned into a string if supported and sent back to the client
+    //
+    //Examples:
+    //  url: /api/performances/get
+    //  method: performances_get
+    //
+    //  url: /
+    //  method: index
+    //
+    //  url: /specific/path/to/call
+    //  method: specific_path_to_call
+    //
     public void handle(HttpExchange t) throws IOException {
         for(String key : this.defaultHeaders.keySet()) {
             t.getResponseHeaders().add(key, this.defaultHeaders.get(key));
@@ -58,18 +69,22 @@ public abstract class Responder implements HttpHandler {
                     JSONObject body = this.getBody(t);
                     if(this.bodyRequirementsMet(t, method, body)) {
                         Object response;
-                        if(body != null) {
+                        if(body != null && body.length() > 0) {
                             response = method.invoke(this, t, body);
                         }else{
                             response = method.invoke(this, t);
                         }
-                        if(response instanceof String) {
+                        if(response == null) {
+                            this.close(t, "{\"success\":false}");
+                        }else if(response instanceof String) {
                             this.close(t, (String) response);
                         }else if(response instanceof byte[]) {
                             this.closeRaw(t, (byte[]) response);
                         }else if(response instanceof ResultSet) {
                             this.close(t, resultSetToJson((ResultSet) response).toString());
                         }else if(response instanceof JSONObject) {
+                            this.close(t, response.toString());
+                        }else if(response instanceof JSONArray) {
                             this.close(t, response.toString());
                         }else{
                             System.out.println("Unsupported type has been returned by handler method: " + methodName);
@@ -89,14 +104,17 @@ public abstract class Responder implements HttpHandler {
         }
     }
 
+    //noneFound will return the NOT_FOUND response to the client
     public void noneFound(HttpExchange t) throws IOException {
         this.close(t, NOT_FOUND);
     }
 
+    //close will close the request by sending the response string given
     public void close(HttpExchange t, String response) throws IOException {
         this.closeRaw(t, response.getBytes());
     }
 
+    //closeRaw will close the request by sending the raw byte array given
     public void closeRaw(HttpExchange t, byte[] response) throws IOException {
         t.sendResponseHeaders(200, response.length);
         OutputStream os = t.getResponseBody();
@@ -104,6 +122,7 @@ public abstract class Responder implements HttpHandler {
         os.close();
     }
 
+    //bodyRequirementsMet will check if the requirements given above a method using annotations corresponds to a request body
     public boolean bodyRequirementsMet(HttpExchange t, Method method, JSONObject bodyObject) {
         try{
             Required required = method.getAnnotation(Required.class);
@@ -125,6 +144,7 @@ public abstract class Responder implements HttpHandler {
         }
     }
 
+    //getBody will return a JSONObject containing the data of the request body
     public JSONObject getBody(HttpExchange t) {
         try{
             InputStreamReader streamReader = new InputStreamReader(t.getRequestBody(), StandardCharsets.UTF_8);
@@ -148,6 +168,7 @@ public abstract class Responder implements HttpHandler {
         }
     }
 
+    //resultSetToJson will turn an sql ResultSet to a JSONArray object
     public static JSONArray resultSetToJson(ResultSet resultSet) {
         JSONArray array = new JSONArray();
         try {
@@ -158,7 +179,16 @@ public abstract class Responder implements HttpHandler {
             while (resultSet.next()) {
                 JSONObject jsonObject = new JSONObject();
                 for (int i = 1; i <= resultSet.getMetaData().getColumnCount(); i++) {
-                    jsonObject.put(resultSet.getMetaData().getColumnName(i), resultSet.getObject(i));
+                    if (resultSet.getObject(i) instanceof String) {
+                        String json = (String) resultSet.getObject(i);
+                        try{
+                            jsonObject.put(resultSet.getMetaData().getColumnName(i), new JSONObject(json));
+                        }catch(Exception e) {
+                            jsonObject.put(resultSet.getMetaData().getColumnName(i), resultSet.getObject(i));
+                        }
+                    } else {
+                        jsonObject.put(resultSet.getMetaData().getColumnName(i), resultSet.getObject(i));
+                    }
                 }
                 array.put(array.length(), jsonObject);
             }

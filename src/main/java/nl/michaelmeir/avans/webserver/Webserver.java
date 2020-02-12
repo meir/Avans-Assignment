@@ -7,15 +7,15 @@ import nl.michaelmeir.avans.responders.Pages;
 
 import java.net.InetSocketAddress;
 
+//Webserver initializes the webserver and handlers
 public class Webserver {
 
-    public int PORT = 8080;
-    public static String INDEX = "index.html";
-    public static String ROOT = "/web";
-    public static Dotenv env;
+    public int PORT = 8080; //PORT is the default port that will be used if its not specified in the .env
+    public static Dotenv env; //env contains the data of the .env file
 
-    private HttpServer server;
+    private HttpServer server; //server is the webserver
 
+    //Webserver initializes the webserver with its port
     public Webserver() {
         try{
             env = Dotenv.load();
@@ -29,6 +29,7 @@ public class Webserver {
         }
     }
 
+    //run starts the webserver with its Page and API responders
     public void run() {
         System.out.println("Starting webserver on http://localhost:" + String.valueOf(PORT));
         server.createContext("/", new Pages(env));
